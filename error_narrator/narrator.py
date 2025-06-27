@@ -10,7 +10,7 @@ class ErrorNarrator:
     """
     Класс для получения объяснений ошибок с помощью моделей Hugging Face.
     """
-    DEFAULT_MODEL_ID = "google/gemma-1.1-7b-it"
+    DEFAULT_MODEL_ID = "MiniMaxAI/MiniMax-M1"
     API_URL_TEMPLATE = "https://api-inference.huggingface.co/models/{model_id}"
     DEFAULT_PROMPT_TEMPLATE = (
         "You are an expert Python developer's assistant. An internal error occurred in an application. "
