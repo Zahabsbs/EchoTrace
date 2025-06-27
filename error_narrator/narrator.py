@@ -11,7 +11,7 @@ class ErrorNarrator:
     Класс для получения объяснений ошибок с помощью моделей Hugging Face.
     """
     DEFAULT_MODEL_ID = "MiniMaxAI/MiniMax-M1"
-    API_URL_TEMPLATE = "https://api-inference.huggingface.co/models/{model_id}"
+    API_URL_TEMPLATE = "https://huggingface.co/spaces/MiniMaxAI/MiniMax-M1"
     DEFAULT_PROMPT_TEMPLATE = (
         "You are an expert Python developer's assistant. An internal error occurred in an application. "
         "Your task is to analyze the traceback and provide a concise analysis for the developer in Russian. "
