@@ -1,85 +1,91 @@
-# Error Narrator 🤖
-
-**Error Narrator** — это умная Python-библиотека, которая превращает непонятные трейсбеки ошибок в ясные, структурированные объяснения с помощью искусственного интеллекта. Забудьте о долгом гуглении ошибок — получите причину, место и готовое решение прямо в вашей консоли!
+# 🚀 Error Narrator
 
 [![PyPI version](https://badge.fury.io/py/error-narrator.svg)](https://badge.fury.io/py/error-narrator)
-[![Python](https://img.shields.io/badge/Python-3.8%2B-blue.svg)](https://www.python.org/downloads/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https.github.com/Zahabsbs/error-narrator/blob/main/LICENSE)
 
-## 🚀 Основные возможности
+**Error Narrator** is a Python library that uses AI to provide clear, human-readable explanations for Python exceptions and tracebacks. Instead of just getting a stack trace, you get a structured, educational breakdown of what went wrong, right in your console.
 
-- **Анализ ошибок с помощью ИИ:** Получайте подробный разбор любого трейсбека.
-- **Структурированный ответ:** Объяснение всегда включает:
-  - **🎯 Причину ошибки:** Что именно пошло не так.
-  - **📍 Место ошибки:** Точный файл и строка с фрагментом кода.
-  - **🛠️ Предлагаемое исправление:** Готовый для копирования код, который решает проблему.
-  - **🎓 Обучающий момент:** Краткое объяснение концепции, чтобы избегать подобных ошибок в будущем.
-- **Поддержка нескольких провайдеров:**
-  - **`gradio` (по умолчанию):** Бесплатный доступ к моделям на Hugging Face Spaces. Отлично для быстрого старта.
-  - **`openai`:** Используйте мощные модели, такие как GPT-3.5 или GPT-4, для более точных и надежных ответов (требуется API-ключ).
-- **Синхронный и асинхронный режимы:** Используйте библиотеку в любом проекте.
+The library is multilingual, currently supporting English (default) and Russian.
 
-## 📦 Установка
+## 📦 Features
+
+-   **🤖 AI-Powered Explanations**: Uses language models from Gradio or OpenAI to explain errors.
+-   **📝 Structured Output**: Provides a clear, markdown-formatted explanation with:
+    -   🎯 **Root Cause**: What caused the error.
+    -   📍 **Error Location**: Pinpoints the exact file and line.
+    -   🛠️ **Suggested Fix**: Offers a code diff for a potential solution.
+    -   🎓 **A Learning Moment**: Explains the underlying concepts to prevent future mistakes.
+-   **🎨 Rich Console Output**: Uses the `rich` library to print beautiful, colorized output in the terminal.
+-   **⚡ Async Support**: Provides asynchronous methods (`*_async`) for non-blocking operations.
+-   **💾 Caching**: Caches explanations for identical tracebacks to speed up repeated runs and reduce API calls.
+-   **🌐 Multilingual**: Supports explanations in English (`en`) and Russian (`ru`).
+
+## 💾 Installation
 
 ```bash
 pip install error-narrator
 ```
 
-Для работы с OpenAI необходимо также установить соответствующую зависимость, которая включена в `pyproject.toml`.
+## 📝 How to Use
 
-## ⚙️ Как использовать
+### 1. 🔑 Get an API Key
 
-### Шаг 1: Настройка окружения
+The library requires an API key for the chosen provider.
 
-Для провайдера `openai` необходимо установить ваш API-ключ в качестве переменной окружения:
-```bash
-export OPENAI_API_KEY='sk-...'
-```
-Для приватных `gradio` репозиториев может понадобиться ключ Hugging Face:
-```bash
-export HUGGINGFACE_API_KEY='hf_...'
-```
+-   **Gradio (Default)**: You will need a Hugging Face User Access Token. You can get one from your [Hugging Face account settings](https://huggingface.co/settings/tokens).
+-   **OpenAI**: You will need an API key from your [OpenAI dashboard](https://platform.openai.com/api-keys).
 
-### Шаг 2: Использование в коде
+💡 **Tip:** It is recommended to set your API key as an environment variable:
+-   `HUGGINGFACE_API_KEY` for Gradio.
+-   `OPENAI_API_KEY` for OpenAI.
 
-Это очень просто. Оберните ваш код в `try...except`, поймайте исключение и передайте его трейсбек в `ErrorNarrator`.
+### 2. ⚙️ Basic Usage
+
+Here is a simple example of how to use `ErrorNarrator`. The library will automatically catch exceptions within a `try...except` block and explain them.
+
+By default, the explanation will be in **English**.
 
 ```python
 import traceback
 from error_narrator import ErrorNarrator
 
-def some_buggy_function():
-    # Пример кода, который вызовет ошибку
-    data = {'user': 'Alice'}
-    print(data['age']) # KeyError
+# The narrator will automatically look for the HUGGINGFACE_API_KEY environment variable
+# if no api_key is provided.
+narrator = ErrorNarrator() 
 
-if __name__ == "__main__":
-    try:
-        some_buggy_function()
-    except Exception:
-        tb_str = traceback.format_exc()
-
-        print("\n--- 😱 Произошла ошибка! Анализирую с помощью AI... ---\n")
-
-        # --- Вариант 1: Использование бесплатного провайдера Gradio (по умолчанию) ---
-        narrator_free = ErrorNarrator()
-        narrator_free.explain_and_print(tb_str)
-
-        print("\n--- 🚀 Анализ с помощью более мощной модели OpenAI... ---\n")
-
-        # --- Вариант 2: Использование провайдера OpenAI ---
-        # Убедитесь, что ключ OPENAI_API_KEY установлен
-        try:
-            narrator_pro = ErrorNarrator(provider='openai', model_id='gpt-3.5-turbo')
-            narrator_pro.explain_and_print(tb_str)
-        except Exception as e:
-            print(f"Не удалось запустить OpenAI: {e}")
+try:
+    # Some code that might raise an error
+    result = 1 / 0
+except Exception:
+    # Get the traceback as a string
+    traceback_str = traceback.format_exc()
+    # Get the explanation and print it to the console
+    narrator.explain_and_print(traceback_str)
 
 ```
-## 📈 Будущие улучшения
 
-- Добавление поддержки других AI-провайдеров (Anthropic, Gemini).
+### 3. 🌍 Getting Explanations in Russian
 
-## 🤝 Вклад
+To get explanations in a different language, use the `language` parameter during initialization.
 
-Мы будем рады вашему вкладу! Если у вас есть идеи по улучшению, пожалуйста, создавайте issue или pull request.
+```python
+# ...
+# Initialize with Russian language support
+narrator = ErrorNarrator(language="ru")
+# ...
+```
+
+### 4. 🏷️ Using a specific provider (e.g., OpenAI)
+
+You can also specify a provider and pass the API key directly.
+
+```python
+narrator = ErrorNarrator(
+    provider="openai",
+    api_key="your-openai-api-key"
+)
+# ...
+```
+
+## 🤝 Development
+
+Contributions are welcome! Please feel free to submit a pull request or open an issue.

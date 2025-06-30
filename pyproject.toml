@@ -4,7 +4,7 @@ build-backend = "poetry.core.masonry.api"
 
 [project]
 name = "error-narrator"
-version = "0.2.0"
+version = "0.2.1"
 authors = [
   { name="Timur", email="kk7629803@gmail.com" },
 ]
