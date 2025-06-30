@@ -1,10 +1,10 @@
 [build-system]
-requires = ["setuptools>=61.0"]
-build-backend = "setuptools.build_meta"
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
 
 [project]
 name = "error-narrator"
-version = "0.1.0"
+version = "0.2.0"
 authors = [
   { name="Timur", email="kk7629803@gmail.com" },
 ]
@@ -17,9 +17,19 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 dependencies = [
-    "httpx[http2]",
+    "requests",
+    "httpx",
+    "rich",
 ]
 
 [project.urls]
 Homepage = "https://github.com/Zahabsbs"
-Issues = "https://github.com/your-username/error-narrator/issues" 
+Issues = "https://github.com/Zahabsbs/error-narrator/issues"
+
+[tool.poetry.dependencies]
+python = "^3.8"
+requests = "^2.31.0"
+httpx = "^0.27.0"
+rich = "^13.7.1"
+gradio_client = "^0.10.1"
+openai = "^1.3.0" 
