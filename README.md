@@ -1,3 +1,5 @@
+[Read this README in Russian](README.ru.md)
+
 # 🚀 Error Narrator
 
 [![PyPI version](https://badge.fury.io/py/error-narrator.svg)](https://badge.fury.io/py/error-narrator)

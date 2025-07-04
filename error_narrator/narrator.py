@@ -6,9 +6,9 @@ from openai import OpenAI, AsyncOpenAI
 from rich.console import Console
 from rich.markdown import Markdown
 
-# Настраиваем базовый логгер для библиотеки
+# Configure a basic logger for the library
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-# Понижаем уровень логирования для httpx и gradio_client, чтобы убрать лишний шум
+# Lower the logging level for httpx and gradio_client to reduce noise
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("gradio_client").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
@@ -92,32 +92,32 @@ _TRANSLATIONS = {
 }
 
 class NarratorException(Exception):
-    """Базовое исключение для библиотеки ErrorNarrator."""
+    """Base exception for the ErrorNarrator library."""
     pass
 
 class ApiKeyNotFoundError(NarratorException):
-    """Вызывается, когда API-ключ не найден."""
+    """Raised when the API key is not found."""
     pass
 
 class ErrorNarrator:
     """
-    Класс для получения объяснений ошибок с помощью AI.
-    Поддерживает несколько провайдеров: 'gradio' (по умолчанию, бесплатно) и 'openai'.
+    A class to get AI-powered explanations for errors.
+    Supports multiple providers: 'gradio' (default, free) and 'openai'.
     """
     GRADIO_MODEL_ID = "hysts/mistral-7b"
     OPENAI_MODEL_ID = "gpt-3.5-turbo"
 
     def __init__(self, provider: str = 'gradio', language: str = 'en', api_key: str = None, model_id: str = None, prompt_template: str = None, **kwargs):
         """
-        Инициализирует ErrorNarrator.
+        Initializes the ErrorNarrator.
 
-        :param provider: Провайдер для получения объяснений ('gradio' или 'openai').
-        :param language: Язык для ответа AI ('en' или 'ru').
-        :param api_key: API-ключ. Если не указан, будет взят из переменных окружения
-                        (HUGGINGFACE_API_KEY для 'gradio', OPENAI_API_KEY для 'openai').
-        :param model_id: Идентификатор модели. Если не указан, используется значение по умолчанию для провайдера.
-        :param prompt_template: Шаблон промпта для модели.
-        :param kwargs: Дополнительные параметры для модели (например, temperature, max_new_tokens).
+        :param provider: The provider to use for explanations ('gradio' or 'openai').
+        :param language: The language for the AI response ('en' or 'ru').
+        :param api_key: The API key. If not provided, it will be sourced from environment variables
+                        (HUGGINGFACE_API_KEY for 'gradio', OPENAI_API_KEY for 'openai').
+        :param model_id: The model identifier. If not provided, a default is used for the provider.
+        :param prompt_template: A custom prompt template for the model.
+        :param kwargs: Additional parameters for the model (e.g., temperature, max_new_tokens).
         """
         if language not in _TRANSLATIONS:
             raise ValueError(_TRANSLATIONS['en']['unsupported_language'])
@@ -127,13 +127,13 @@ class ErrorNarrator:
         self.provider = provider
         self.prompt_template = prompt_template or _PROMPT_TEMPLATES[self.language]
         self.model_params = kwargs
-        self.cache = {} # Инициализируем кеш
+        self.cache = {} # Initialize cache
 
         if self.provider == 'gradio':
             self.api_key = api_key or os.getenv("HUGGINGFACE_API_KEY")
             self.model_id = model_id or self.GRADIO_MODEL_ID
             self.client = GradioClient(self.model_id, hf_token=self.api_key)
-            # Устанавливаем параметры по умолчанию для Gradio, если они не переданы
+            # Set default parameters for Gradio if not provided
             self.model_params.setdefault('temperature', 0.6)
             self.model_params.setdefault('max_new_tokens', 1024)
             self.model_params.setdefault('top_p', 0.9)
@@ -147,22 +147,22 @@ class ErrorNarrator:
             self.model_id = model_id or self.OPENAI_MODEL_ID
             self.client = OpenAI(api_key=self.api_key)
             self.async_client = AsyncOpenAI(api_key=self.api_key)
-            # Устанавливаем параметры по умолчанию для OpenAI, если они не переданы
+            # Set default parameters for OpenAI if not provided
             self.model_params.setdefault('temperature', 0.7)
-            self.model_params.setdefault('max_tokens', 1024) # OpenAI использует 'max_tokens'
+            self.model_params.setdefault('max_tokens', 1024) # OpenAI uses 'max_tokens'
         else:
             raise ValueError(self.T["unknown_provider"])
 
     def _build_prompt(self, traceback: str) -> str:
-        """Формирует промпт для модели."""
+        """Builds the prompt for the model."""
         return self.prompt_template.format(traceback=traceback)
 
-    # --- Методы для провайдера Gradio ---
+    # --- Methods for Gradio provider ---
 
     def _predict_gradio(self, prompt: str) -> str:
         logger.info(self.T["gradio_request"].format(model_id=self.model_id))
         try:
-            result = self.client.predict(
+            job = self.client.submit(
                 prompt,
                 self.model_params.get('max_new_tokens'),
                 self.model_params.get('temperature'),
@@ -171,22 +171,41 @@ class ErrorNarrator:
                 self.model_params.get('repetition_penalty'),
                 api_name="/chat"
             )
+            # Wait for the full response
+            while not job.done():
+                pass
+            result = job.outputs()[-1] # The last result is the final one
             return result.strip()
         except Exception as e:
-            logger.error(f"Ошибка при запросе к Gradio: {e}")
+            logger.error(f"Error during Gradio request: {e}")
             return self.T["gradio_error"].format(e=e)
 
     async def _predict_async_gradio(self, prompt: str) -> str:
         logger.info(self.T["gradio_request_async"].format(model_id=self.model_id))
         loop = asyncio.get_running_loop()
         try:
-            result = await loop.run_in_executor(None, self._predict_gradio, prompt)
-            return result
+            # Use run_in_executor for the blocking call
+            job = await loop.run_in_executor(None, lambda: self.client.submit(
+                prompt,
+                self.model_params.get('max_new_tokens'),
+                self.model_params.get('temperature'),
+                self.model_params.get('top_p'),
+                self.model_params.get('top_k'),
+                self.model_params.get('repetition_penalty'),
+                api_name="/chat"
+            ))
+            
+            # Asynchronously wait for completion
+            while not job.done():
+                await asyncio.sleep(0.1)
+
+            result = job.outputs()[-1]
+            return result.strip()
         except Exception as e:
-            logger.error(f"Ошибка при асинхронном запросе к Gradio: {e}")
+            logger.error(f"Error during asynchronous Gradio request: {e}")
             return self.T["gradio_error_async"].format(e=e)
             
-    # --- Методы для провайдера OpenAI ---
+    # --- Methods for OpenAI provider ---
 
     def _predict_openai(self, prompt: str) -> str:
         logger.info(self.T["openai_request"].format(model_id=self.model_id))
@@ -198,7 +217,7 @@ class ErrorNarrator:
             )
             return completion.choices[0].message.content.strip()
         except Exception as e:
-            logger.error(f"Ошибка при запросе к OpenAI: {e}")
+            logger.error(f"Error during OpenAI request: {e}")
             return self.T["openai_error"].format(e=e)
 
     async def _predict_async_openai(self, prompt: str) -> str:
@@ -211,17 +230,17 @@ class ErrorNarrator:
             )
             return completion.choices[0].message.content.strip()
         except Exception as e:
-            logger.error(f"Ошибка при асинхронном запросе к OpenAI: {e}")
+            logger.error(f"Error during asynchronous OpenAI request: {e}")
             return self.T["openai_error_async"].format(e=e)
 
-    # --- Диспетчеры предсказаний ---
+    # --- Prediction dispatchers ---
 
     def _predict(self, prompt: str) -> str:
         if self.provider == 'gradio':
             return self._predict_gradio(prompt)
         elif self.provider == 'openai':
             return self._predict_openai(prompt)
-        # Этот return никогда не должен сработать из-за проверки в __init__
+        # This return should never be reached due to the check in __init__
         return self.T["invalid_provider"]
 
     async def _predict_async(self, prompt: str) -> str:
@@ -233,8 +252,8 @@ class ErrorNarrator:
 
     def explain_error(self, traceback: str) -> str:
         """
-        Получает объяснение для ошибки (traceback) с помощью AI.
-        Проверяет кеш перед отправкой запроса.
+        Gets an explanation for a traceback using the AI.
+        Checks the cache before sending a request.
         """
         if traceback in self.cache:
             logger.info(self.T["cache_hit"])
@@ -242,13 +261,13 @@ class ErrorNarrator:
 
         prompt = self._build_prompt(traceback)
         explanation = self._predict(prompt)
-        self.cache[traceback] = explanation # Сохраняем результат в кеш
+        self.cache[traceback] = explanation # Save result to cache
         return explanation
 
     async def explain_error_async(self, traceback: str) -> str:
         """
-        Асинхронно получает объяснение для ошибки (traceback) с помощью AI.
-        Проверяет кеш перед отправкой запроса.
+        Asynchronously gets an explanation for a traceback using the AI.
+        Checks the cache before sending a request.
         """
         if traceback in self.cache:
             logger.info(self.T["cache_hit"])
@@ -256,12 +275,12 @@ class ErrorNarrator:
 
         prompt = self._build_prompt(traceback)
         explanation = await self._predict_async(prompt)
-        self.cache[traceback] = explanation # Сохраняем результат в кеш
+        self.cache[traceback] = explanation # Save result to cache
         return explanation
 
     def explain_and_print(self, traceback: str):
         """
-        Получает объяснение, форматирует его с помощью rich и выводит в консоль.
+        Gets an explanation, formats it with rich, and prints it to the console.
         """
         console = Console()
         with console.status(self.T["status_analysis"], spinner="dots"):
@@ -271,7 +290,7 @@ class ErrorNarrator:
 
     async def explain_and_print_async(self, traceback: str):
         """
-        Асинхронно получает объяснение, форматирует и выводит в консоль.
+        Asynchronously gets an explanation, formats it, and prints it to the console.
         """
         console = Console()
         with console.status(self.T["status_analysis"], spinner="dots"):
