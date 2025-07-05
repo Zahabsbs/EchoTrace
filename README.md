@@ -6,6 +6,8 @@
 
 **Error Narrator** is a Python library that uses AI to provide clear, human-readable explanations for Python exceptions and tracebacks. Instead of just getting a stack trace, you get a structured, educational breakdown of what went wrong, right in your console.
 
+![Error Narrator Screenshot](https://raw.githubusercontent.com/your-username/your-repo/main/path/to/your/screenshot.png)
+
 The library is multilingual, currently supporting English (default) and Russian.
 
 ## 📦 Features
@@ -29,16 +31,35 @@ pip install error-narrator
 
 ## 📝 How to Use
 
-### 1. 🔑 Get an API Key
+### 1. 🔑 API Key Configuration
 
-The library requires an API key for the chosen provider.
+The library supports two providers: `gradio` (default) and `openai`.
 
--   **Gradio (Default)**: You will need a Hugging Face User Access Token. You can get one from your [Hugging Face account settings](https://huggingface.co/settings/tokens).
--   **OpenAI**: You will need an API key from your [OpenAI dashboard](https://platform.openai.com/api-keys).
+-   **Gradio (Default & Free)**: This provider uses public, community-hosted models on Hugging Face Spaces. An API key (Hugging Face User Access Token) is **optional** for most public models but may be required for private models or to increase rate limits. You can get a token from your [Hugging Face account settings](https://huggingface.co/settings/tokens).
+-   **OpenAI (Higher Quality & Paid)**: This provider uses official OpenAI models. An API key from your [OpenAI dashboard](https://platform.openai.com/api-keys) is **mandatory**.
 
-💡 **Tip:** It is recommended to set your API key as an environment variable:
--   `HUGGINGFACE_API_KEY` for Gradio.
--   `OPENAI_API_KEY` for OpenAI.
+💡 **Tip:** The library will automatically detect API keys set as environment variables:
+-   `HUGGINGFACE_API_KEY` for Gradio (optional).
+-   `OPENAI_API_KEY` for OpenAI (required).
+
+#### How to Set Environment Variables
+
+You can set these variables for your current terminal session or add them to your shell's profile file (e.g., `.bashrc`, `.zshrc`, or your system's environment variable settings) for them to be permanent.
+
+**On macOS/Linux:**
+```bash
+export HUGGINGFACE_API_KEY="your-key-here"
+```
+
+**On Windows (Command Prompt):**
+```cmd
+set HUGGINGFACE_API_KEY="your-key-here"
+```
+
+**On Windows (PowerShell):**
+```powershell
+$env:HUGGINGFACE_API_KEY="your-key-here"
+```
 
 ### 2. ⚙️ Basic Usage
 
@@ -87,6 +108,41 @@ narrator = ErrorNarrator(
 )
 # ...
 ```
+
+### 5. 🔄 Gradio Provider: Model List and Rotation
+
+By default, the `gradio` provider uses a predefined list of public models and tries them in a random order for each request. This rotation and retry system increases the chances of getting a successful response.
+
+#### How to Provide Your Own Model List (Recommended)
+
+The best way to customize the model list is to pass your own list directly during initialization using the `models` parameter. This gives you full control without editing any package files.
+
+```python
+# Provide a custom list of models for rotation
+my_favorite_models = [
+    "hysts/mistral-7b",
+    "Tblue/gemma-7b-it",
+    "your-username/your-own-model"
+]
+
+narrator = ErrorNarrator(
+    provider="gradio",
+    models=my_favorite_models
+)
+```
+
+#### How to Use a Single Specific Model
+
+If you want to disable rotation and use only one model, you can use the `model_id` parameter as a convenient shortcut.
+
+```python
+# This will ONLY use the specified model
+narrator = ErrorNarrator(provider="gradio", model_id="hysts/mistral-7b")
+```
+
+#### How to Edit the Default Model List
+
+If you want to change the default behavior for all your projects, you can edit the `gradio_models.py` file directly in your Python `site-packages` directory. This is generally not recommended unless you know what you are doing.
 
 ## 🤝 Development
 

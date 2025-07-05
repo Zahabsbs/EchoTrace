@@ -1,7 +1,10 @@
 import os
 import logging
 import asyncio
-from gradio_client import Client as GradioClient
+import random
+import time
+from .gradio_models import GRADIO_MODELS
+from gradio_client import Client
 from openai import OpenAI, AsyncOpenAI
 from rich.console import Console
 from rich.markdown import Markdown
@@ -67,7 +70,12 @@ _TRANSLATIONS = {
         "openai_error_async": "К сожалению, не удалось получить асинхронное объяснение от AI. (Ошибка OpenAI: {e})",
         "invalid_provider": "Ошибка: неверный провайдер.",
         "cache_hit": "Объяснение найдено в кеше.",
-        "status_analysis": "[bold green]Анализирую ошибку с помощью AI...[/]"
+        "status_analysis": "[bold green]Анализирую ошибку с помощью AI...[/]",
+        # Rich status messages
+        "cache_hit_rich": "💾 Найдено в кеше. Загружаю...",
+        "gradio_request_rich": "⚡️ Пробую модель Gradio: [bold cyan]{model_id}[/bold cyan]...",
+        "gradio_fail_rich": "❌ Модель [bold red]{model_id}[/bold red] не ответила. Пробую следующую...",
+        "openai_request_rich": "⚡️ Обращаюсь к OpenAI: [bold green]{model_id}[/bold green]..."
     },
     "en": {
         "api_key_error": (
@@ -87,7 +95,12 @@ _TRANSLATIONS = {
         "openai_error_async": "Unfortunately, failed to get an asynchronous explanation from the AI. (OpenAI Error: {e})",
         "invalid_provider": "Error: invalid provider.",
         "cache_hit": "Explanation found in cache.",
-        "status_analysis": "[bold green]Analyzing the error with AI...[/]"
+        "status_analysis": "[bold green]Analyzing the error with AI...[/]",
+        # Rich status messages
+        "cache_hit_rich": "💾 Found in cache. Loading...",
+        "gradio_request_rich": "⚡️ Trying Gradio model: [bold cyan]{model_id}[/bold cyan]...",
+        "gradio_fail_rich": "❌ Model [bold red]{model_id}[/bold red] failed. Trying next...",
+        "openai_request_rich": "⚡️ Contacting OpenAI: [bold green]{model_id}[/bold green]..."
     }
 }
 
@@ -104,10 +117,9 @@ class ErrorNarrator:
     A class to get AI-powered explanations for errors.
     Supports multiple providers: 'gradio' (default, free) and 'openai'.
     """
-    GRADIO_MODEL_ID = "hysts/mistral-7b"
     OPENAI_MODEL_ID = "gpt-3.5-turbo"
 
-    def __init__(self, provider: str = 'gradio', language: str = 'en', api_key: str = None, model_id: str = None, prompt_template: str = None, **kwargs):
+    def __init__(self, provider: str = 'gradio', language: str = 'en', api_key: str = None, model_id: str = None, models: list = None, prompt_template: str = None, **kwargs):
         """
         Initializes the ErrorNarrator.
 
@@ -115,7 +127,8 @@ class ErrorNarrator:
         :param language: The language for the AI response ('en' or 'ru').
         :param api_key: The API key. If not provided, it will be sourced from environment variables
                         (HUGGINGFACE_API_KEY for 'gradio', OPENAI_API_KEY for 'openai').
-        :param model_id: The model identifier. If not provided, a default is used for the provider.
+        :param model_id: A convenience parameter to use a single, specific Gradio model, disabling rotation.
+        :param models: A list of Gradio model identifiers to use for rotation. Overrides the default list.
         :param prompt_template: A custom prompt template for the model.
         :param kwargs: Additional parameters for the model (e.g., temperature, max_new_tokens).
         """
@@ -131,9 +144,18 @@ class ErrorNarrator:
 
         if self.provider == 'gradio':
             self.api_key = api_key or os.getenv("HUGGINGFACE_API_KEY")
-            self.model_id = model_id or self.GRADIO_MODEL_ID
-            self.client = GradioClient(self.model_id, hf_token=self.api_key)
-            # Set default parameters for Gradio if not provided
+            
+            if models:
+                self.models = models
+            elif model_id:
+                self.models = [model_id]
+            else:
+                self.models = GRADIO_MODELS
+            
+            if not self.models:
+                raise ValueError("Gradio provider requires at least one model. Provide a list via the 'models' parameter or ensure 'gradio_models.py' is not empty.")
+
+            # Set default parameters for Gradio, as they are required for the submit() call.
             self.model_params.setdefault('temperature', 0.6)
             self.model_params.setdefault('max_new_tokens', 1024)
             self.model_params.setdefault('top_p', 0.9)
@@ -159,56 +181,121 @@ class ErrorNarrator:
 
     # --- Methods for Gradio provider ---
 
-    def _predict_gradio(self, prompt: str) -> str:
-        logger.info(self.T["gradio_request"].format(model_id=self.model_id))
-        try:
-            job = self.client.submit(
-                prompt,
-                self.model_params.get('max_new_tokens'),
-                self.model_params.get('temperature'),
-                self.model_params.get('top_p'),
-                self.model_params.get('top_k'),
-                self.model_params.get('repetition_penalty'),
-                api_name="/chat"
-            )
-            # Wait for the full response
-            while not job.done():
-                pass
-            result = job.outputs()[-1] # The last result is the final one
-            return result.strip()
-        except Exception as e:
-            logger.error(f"Error during Gradio request: {e}")
-            return self.T["gradio_error"].format(e=e)
+    def _predict_gradio(self, prompt: str, status=None) -> str:
+        shuffled_models = random.sample(self.models, len(self.models))
+        last_error = None
 
-    async def _predict_async_gradio(self, prompt: str) -> str:
-        logger.info(self.T["gradio_request_async"].format(model_id=self.model_id))
+        for model_id in shuffled_models:
+            logger.info(self.T["gradio_request"].format(model_id=model_id))
+            if status:
+                status.update(self.T["gradio_request_rich"].format(model_id=model_id))
+            try:
+                client = Client(model_id, hf_token=self.api_key)
+                job = client.submit(
+                    prompt,
+                    self.model_params.get('max_new_tokens'),
+                    self.model_params.get('temperature'),
+                    self.model_params.get('top_p'),
+                    self.model_params.get('top_k'),
+                    self.model_params.get('repetition_penalty'),
+                    api_name="/chat"
+                )
+                
+                # Wait for the full response by checking job status
+                while not job.done():
+                    time.sleep(0.5) # Prevent high CPU usage
+
+                result = job.outputs()
+                
+                # The result is often a list of conversation turns.
+                # We need the last AI response from the last turn.
+                if result and isinstance(result, list) and len(result) > 0:
+                    final_turn = result[-1]
+                    if isinstance(final_turn, list) and len(final_turn) > 1:
+                         # Standard format: [user_prompt, ai_response]
+                        return final_turn[-1].strip()
+                    elif isinstance(final_turn, str):
+                        # Some models might return just the final string
+                        return final_turn.strip()
+
+                # If we reach here, the response format is unexpected.
+                logger.warning(f"Model '{model_id}' returned an unexpected response format.")
+                last_error = f"Model '{model_id}' returned an unexpected response format."
+                if status:
+                    status.update(self.T["gradio_fail_rich"].format(model_id=model_id))
+                    time.sleep(1) # Show the message for a moment
+                continue
+
+            except Exception as e:
+                logger.error(f"Error during Gradio request with model {model_id}: {e}")
+                last_error = e
+                if status:
+                    status.update(self.T["gradio_fail_rich"].format(model_id=model_id))
+                    time.sleep(1) # Show the message for a moment
+                continue # Try next model
+
+        logger.error("All Gradio models failed.")
+        return self.T["gradio_error"].format(e=f"All models failed. Last error: {last_error}")
+
+    async def _predict_async_gradio(self, prompt: str, status=None) -> str:
+        shuffled_models = random.sample(self.models, len(self.models))
+        last_error = None
         loop = asyncio.get_running_loop()
-        try:
-            # Use run_in_executor for the blocking call
-            job = await loop.run_in_executor(None, lambda: self.client.submit(
-                prompt,
-                self.model_params.get('max_new_tokens'),
-                self.model_params.get('temperature'),
-                self.model_params.get('top_p'),
-                self.model_params.get('top_k'),
-                self.model_params.get('repetition_penalty'),
-                api_name="/chat"
-            ))
-            
-            # Asynchronously wait for completion
-            while not job.done():
-                await asyncio.sleep(0.1)
 
-            result = job.outputs()[-1]
-            return result.strip()
-        except Exception as e:
-            logger.error(f"Error during asynchronous Gradio request: {e}")
-            return self.T["gradio_error_async"].format(e=e)
+        for model_id in shuffled_models:
+            logger.info(self.T["gradio_request_async"].format(model_id=model_id))
+            if status:
+                status.update(self.T["gradio_request_rich"].format(model_id=model_id))
+            try:
+                client = Client(model_id, hf_token=self.api_key)
+                # Use run_in_executor for the blocking submit call
+                job = await loop.run_in_executor(None, lambda: client.submit(
+                    prompt,
+                    self.model_params.get('max_new_tokens'),
+                    self.model_params.get('temperature'),
+                    self.model_params.get('top_p'),
+                    self.model_params.get('top_k'),
+                    self.model_params.get('repetition_penalty'),
+                    api_name="/chat"
+                ))
+                
+                # Asynchronously wait for completion
+                while not job.done():
+                    await asyncio.sleep(0.5)
+
+                result = job.outputs()
+                
+                if result and isinstance(result, list) and len(result) > 0:
+                    final_turn = result[-1]
+                    if isinstance(final_turn, list) and len(final_turn) > 1:
+                        return final_turn[-1].strip()
+                    elif isinstance(final_turn, str):
+                        return final_turn.strip()
+
+                logger.warning(f"Model '{model_id}' returned an unexpected async response format.")
+                last_error = f"Model '{model_id}' returned an unexpected async response format."
+                if status:
+                    status.update(self.T["gradio_fail_rich"].format(model_id=model_id))
+                    await asyncio.sleep(1)
+                continue
+
+            except Exception as e:
+                logger.error(f"Error during async Gradio request with model {model_id}: {e}")
+                last_error = e
+                if status:
+                    status.update(self.T["gradio_fail_rich"].format(model_id=model_id))
+                    await asyncio.sleep(1)
+                continue
+
+        logger.error("All async Gradio models failed.")
+        return self.T["gradio_error_async"].format(e=f"All models failed. Last error: {last_error}")
             
     # --- Methods for OpenAI provider ---
 
-    def _predict_openai(self, prompt: str) -> str:
+    def _predict_openai(self, prompt: str, status=None) -> str:
         logger.info(self.T["openai_request"].format(model_id=self.model_id))
+        if status:
+            status.update(self.T["openai_request_rich"].format(model_id=self.model_id))
         try:
             completion = self.client.chat.completions.create(
                 model=self.model_id,
@@ -220,8 +307,10 @@ class ErrorNarrator:
             logger.error(f"Error during OpenAI request: {e}")
             return self.T["openai_error"].format(e=e)
 
-    async def _predict_async_openai(self, prompt: str) -> str:
+    async def _predict_async_openai(self, prompt: str, status=None) -> str:
         logger.info(self.T["openai_request_async"].format(model_id=self.model_id))
+        if status:
+            status.update(self.T["openai_request_rich"].format(model_id=self.model_id))
         try:
             completion = await self.async_client.chat.completions.create(
                 model=self.model_id,
@@ -235,46 +324,52 @@ class ErrorNarrator:
 
     # --- Prediction dispatchers ---
 
-    def _predict(self, prompt: str) -> str:
+    def _predict(self, prompt: str, status=None) -> str:
         if self.provider == 'gradio':
-            return self._predict_gradio(prompt)
+            return self._predict_gradio(prompt, status=status)
         elif self.provider == 'openai':
-            return self._predict_openai(prompt)
+            return self._predict_openai(prompt, status=status)
         # This return should never be reached due to the check in __init__
         return self.T["invalid_provider"]
 
-    async def _predict_async(self, prompt: str) -> str:
+    async def _predict_async(self, prompt: str, status=None) -> str:
         if self.provider == 'gradio':
-            return await self._predict_async_gradio(prompt)
+            return await self._predict_async_gradio(prompt, status=status)
         elif self.provider == 'openai':
-            return await self._predict_async_openai(prompt)
+            return await self._predict_async_openai(prompt, status=status)
         return self.T["invalid_provider"]
 
-    def explain_error(self, traceback: str) -> str:
+    def explain_error(self, traceback: str, status=None) -> str:
         """
         Gets an explanation for a traceback using the AI.
         Checks the cache before sending a request.
         """
         if traceback in self.cache:
             logger.info(self.T["cache_hit"])
+            if status:
+                status.update(self.T["cache_hit_rich"])
+                time.sleep(0.5) # Show the message for a moment
             return self.cache[traceback]
 
         prompt = self._build_prompt(traceback)
-        explanation = self._predict(prompt)
+        explanation = self._predict(prompt, status=status)
         self.cache[traceback] = explanation # Save result to cache
         return explanation
 
-    async def explain_error_async(self, traceback: str) -> str:
+    async def explain_error_async(self, traceback: str, status=None) -> str:
         """
         Asynchronously gets an explanation for a traceback using the AI.
         Checks the cache before sending a request.
         """
         if traceback in self.cache:
             logger.info(self.T["cache_hit"])
+            if status:
+                status.update(self.T["cache_hit_rich"])
+                await asyncio.sleep(0.5)
             return self.cache[traceback]
 
         prompt = self._build_prompt(traceback)
-        explanation = await self._predict_async(prompt)
+        explanation = await self._predict_async(prompt, status=status)
         self.cache[traceback] = explanation # Save result to cache
         return explanation
 
@@ -283,8 +378,8 @@ class ErrorNarrator:
         Gets an explanation, formats it with rich, and prints it to the console.
         """
         console = Console()
-        with console.status(self.T["status_analysis"], spinner="dots"):
-            explanation_md = self.explain_error(traceback)
+        with console.status(self.T["status_analysis"], spinner="dots") as status:
+            explanation_md = self.explain_error(traceback, status=status)
         
         console.print(Markdown(explanation_md, style="default"))
 
@@ -293,7 +388,7 @@ class ErrorNarrator:
         Asynchronously gets an explanation, formats it, and prints it to the console.
         """
         console = Console()
-        with console.status(self.T["status_analysis"], spinner="dots"):
-            explanation_md = await self.explain_error_async(traceback)
+        with console.status(self.T["status_analysis"], spinner="dots") as status:
+            explanation_md = await self.explain_error_async(traceback, status=status)
         
         console.print(Markdown(explanation_md, style="default"))
