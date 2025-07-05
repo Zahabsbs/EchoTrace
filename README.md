@@ -6,7 +6,7 @@
 
 **Error Narrator** is a Python library that uses AI to provide clear, human-readable explanations for Python exceptions and tracebacks. Instead of just getting a stack trace, you get a structured, educational breakdown of what went wrong, right in your console.
 
-![Error Narrator Screenshot](https://raw.githubusercontent.com/your-username/your-repo/main/path/to/your/screenshot.png)
+![Error Narrator Screenshot](https://i.postimg.cc/BbydKLcV/2025-07-05-135631.png)
 
 The library is multilingual, currently supporting English (default) and Russian.
 
