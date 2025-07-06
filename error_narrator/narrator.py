@@ -175,6 +175,18 @@ class ErrorNarrator:
         else:
             raise ValueError(self.T["unknown_provider"])
 
+    def _extract_last_string_from_result(self, result: any) -> str | None:
+        """
+        Recursively extracts the last string from a nested list structure.
+        This is a robust way to handle varied API responses from Gradio models.
+        """
+        if isinstance(result, str):
+            return result.strip()
+        if isinstance(result, list) and len(result) > 0:
+            # Recursively call on the last element
+            return self._extract_last_string_from_result(result[-1])
+        return None
+
     def _build_prompt(self, traceback: str) -> str:
         """Builds the prompt for the model."""
         return self.prompt_template.format(traceback=traceback)
@@ -207,19 +219,15 @@ class ErrorNarrator:
 
                 result = job.outputs()
                 
-                # The result is often a list of conversation turns.
-                # We need the last AI response from the last turn.
-                if result and isinstance(result, list) and len(result) > 0:
-                    final_turn = result[-1]
-                    if isinstance(final_turn, list) and len(final_turn) > 1:
-                         # Standard format: [user_prompt, ai_response]
-                        return final_turn[-1].strip()
-                    elif isinstance(final_turn, str):
-                        # Some models might return just the final string
-                        return final_turn.strip()
+                # The result can be in various nested list/string formats.
+                # We need to robustly find the last string in the structure.
+                explanation = self._extract_last_string_from_result(result)
+
+                if explanation:
+                    return explanation
 
                 # If we reach here, the response format is unexpected.
-                logger.warning(f"Model '{model_id}' returned an unexpected response format.")
+                logger.warning(f"Model '{model_id}' returned an unexpected response format: {result}")
                 last_error = f"Model '{model_id}' returned an unexpected response format."
                 if status:
                     status.update(self.T["gradio_fail_rich"].format(model_id=model_id))
@@ -247,8 +255,9 @@ class ErrorNarrator:
             if status:
                 status.update(self.T["gradio_request_rich"].format(model_id=model_id))
             try:
-                client = Client(model_id, hf_token=self.api_key)
-                # Use run_in_executor for the blocking submit call
+                # Use run_in_executor to avoid blocking the event loop with sync code
+                client = await loop.run_in_executor(None, lambda: Client(model_id, hf_token=self.api_key))
+                
                 job = await loop.run_in_executor(None, lambda: client.submit(
                     prompt,
                     self.model_params.get('max_new_tokens'),
@@ -259,24 +268,23 @@ class ErrorNarrator:
                     api_name="/chat"
                 ))
                 
-                # Asynchronously wait for completion
-                while not job.done():
+                # Poll for completion without blocking
+                while not await loop.run_in_executor(None, job.done):
                     await asyncio.sleep(0.5)
 
-                result = job.outputs()
-                
-                if result and isinstance(result, list) and len(result) > 0:
-                    final_turn = result[-1]
-                    if isinstance(final_turn, list) and len(final_turn) > 1:
-                        return final_turn[-1].strip()
-                    elif isinstance(final_turn, str):
-                        return final_turn.strip()
+                result = await loop.run_in_executor(None, job.outputs)
 
-                logger.warning(f"Model '{model_id}' returned an unexpected async response format.")
-                last_error = f"Model '{model_id}' returned an unexpected async response format."
+                # The result can be in various nested list/string formats.
+                explanation = self._extract_last_string_from_result(result)
+
+                if explanation:
+                    return explanation
+                
+                logger.warning(f"Model '{model_id}' returned an unexpected response format: {result}")
+                last_error = f"Model '{model_id}' returned an unexpected response format."
                 if status:
                     status.update(self.T["gradio_fail_rich"].format(model_id=model_id))
-                    await asyncio.sleep(1)
+                    await asyncio.sleep(1) # Show the message for a moment
                 continue
 
             except Exception as e:
@@ -284,10 +292,10 @@ class ErrorNarrator:
                 last_error = e
                 if status:
                     status.update(self.T["gradio_fail_rich"].format(model_id=model_id))
-                    await asyncio.sleep(1)
-                continue
+                    await asyncio.sleep(1) # Show the message for a moment
+                continue # Try next model
 
-        logger.error("All async Gradio models failed.")
+        logger.error("All Gradio models failed.")
         return self.T["gradio_error_async"].format(e=f"All models failed. Last error: {last_error}")
             
     # --- Methods for OpenAI provider ---
