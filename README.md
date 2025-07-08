@@ -6,7 +6,7 @@
 
 **Error Narrator** is a Python library that uses AI to provide clear, human-readable explanations for Python exceptions and tracebacks. Instead of just getting a stack trace, you get a structured, educational breakdown of what went wrong, right in your console.
 
-![Error Narrator Screenshot](https://i.postimg.cc/BbydKLcV/2025-07-05-135631.png)
+![Error Narrator icon](https://i.postimg.cc/ht2RnVg8/Error-narrator-icon.png)
 
 The library is multilingual, currently supporting English (default) and Russian.
 
@@ -22,6 +22,8 @@ The library is multilingual, currently supporting English (default) and Russian.
 -   **⚡ Async Support**: Provides asynchronous methods (`*_async`) for non-blocking operations.
 -   **💾 Caching**: Caches explanations for identical tracebacks to speed up repeated runs and reduce API calls.
 -   **🌐 Multilingual**: Supports explanations in English (`en`) and Russian (`ru`).
+
+![Error Narrator Screenshot](https://i.postimg.cc/BbydKLcV/2025-07-05-135631.png)
 
 ## 💾 Installation
 
