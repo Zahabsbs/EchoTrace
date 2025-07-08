@@ -2,7 +2,7 @@
 
 # 🚀 Error Narrator
 
-[![PyPI version](https://badge.fury.io/py/error-narrator.svg)](https://badge.fury.io/py/error-narrator)
+[![PyPI version](https://i.postimg.cc/NFnjVR17/Error-narrator-icon.png)
 
 **Error Narrator** is a Python library that uses AI to provide clear, human-readable explanations for Python exceptions and tracebacks. Instead of just getting a stack trace, you get a structured, educational breakdown of what went wrong, right in your console.
 
