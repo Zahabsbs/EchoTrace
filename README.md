@@ -1,4 +1,5 @@
 [Read this README in Russian](README.ru.md)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 # 🚀 Error Narrator
 
